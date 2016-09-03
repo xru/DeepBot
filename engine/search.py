@@ -16,7 +16,8 @@ TYPE_NAME = "chat"
 def init(data_dir):
     bulk_data = []
     es = Elasticsearch(hosts=[ES_HOST])
-    header = ["character1", "character2", "movie", "context", "utterance"]
+    header = ["context", "utterance"]
+    id = 0
     for row in utterance_generator(data_dir):
         data_dict = {}
         for i in range(len(row)):
@@ -26,11 +27,13 @@ def init(data_dir):
             "index": {
                 "_index": INDEX_NAME,
                 "_type": TYPE_NAME,
+                "_id": id
             }
         }
 
         bulk_data.append(op_dict)
         bulk_data.append(data_dict)
+        id += 1
 
     if es.indices.exists(INDEX_NAME):
         print("deleting %s..." % (INDEX_NAME))
@@ -43,18 +46,20 @@ def init(data_dir):
             "number_of_shards": 1,  # can't change,we use single machine so set 1
             "number_of_replicas": 0,
             "analysis": {
+                "analyser": "english"
 
             }
         }
     }
 
     print("creating %s index..." % (INDEX_NAME))
-    res = es.indices.create(index=INDEX_NAME, body=request_body, )
+    res = es.indices.create(index=INDEX_NAME, body=request_body)
     print(" response: %s" % (res))
 
     # bulk index the data
     print("bulk indexing...")
-    res = es.bulk(index=INDEX_NAME, body=bulk_data, refresh=True)
+    res = es.bulk(index=INDEX_NAME, body=bulk_data)
+    print(" responese: %s" % res)
 
     # sanity check
     res = es.search(index=INDEX_NAME, size=2, body={"query": {"match_all": {}}})
@@ -62,8 +67,5 @@ def init(data_dir):
 
 
 if __name__ == '__main__':
-    # data_dir = '../data/cmdc/'
-    # init(data_dir)
-    es = Elasticsearch(hosts=[ES_HOST])
-    res = es.search(index=INDEX_NAME, size=2, body={"query": {"match_all": {}}})
-    print(" response: '%s'" % (res))
+    data_dir = '/data/cmd_corpus/'
+    init(data_dir)

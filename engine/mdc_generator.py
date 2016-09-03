@@ -9,7 +9,9 @@ Cornell Movie--Dialogs Corpus
 import os
 import re
 
+import nltk
 import pandas as pd
+import numpy as np
 
 FILES_NAME = ["movie_characters_metadata.txt",
               "movie_conversations.txt",
@@ -55,20 +57,59 @@ def utterance_generator(file_dir):
     characters_df, conversation_df, lines_df, titles_df = \
         (pd.read_csv(os.path.join(file_dir, fn)) for fn in csv_files)
 
-    ID2movie = dict(zip(titles_df["movieID"], titles_df["movieTitle"]))
+    ID2utterance = dict(zip(lines_df["lineID"], lines_df["utteranceText"]))
+    #  直接用字典比在dataframe中查询快速
+    pattern = re.compile(r"[^a-zA-Z1-9\.!?,' ]")
+
     for utteranceIDs in conversation_df['utterancesIDs']:
         lineIDs = re.findall("'(.*?)'", utteranceIDs)
-        _, _, mID, character1, context = lines_df[lines_df['lineID'] == lineIDs[0]].values[0]
+        context = ID2utterance[lineIDs[0]]
         for lineID in lineIDs[1:]:
-            _, _, _, character2, utterance = lines_df[lines_df['lineID'] == lineID].values[0]
-            yield character1, character2, ID2movie[mID], context, utterance
-            character1 = character2
+            utterance = ID2utterance[lineID]
+
+            try:
+                context = pattern.sub("", context)
+                utterance = pattern.sub("", utterance)
+            except Exception as e:
+                print("Wrong preprocess...%s" % e)
+                continue
+
+            yield context, utterance
+            # print(len(context) - len(utterance))
             context = utterance
+
+
+def take_some_analysis(file_dir):
+    context_length = []
+    utterance_length = []
+
+    dist = nltk.FreqDist()
+
+    for c, u in utterance_generator(file_dir):
+        c_tokens = nltk.word_tokenize(c)
+        u_tokens = nltk.word_tokenize(u)
+        #  记录长度
+        context_length.append(len(c_tokens))
+        utterance_length.append(len(u_tokens))
+
+        dist.update(c_tokens + u_tokens)
+
+    cl_array = np.array(context_length)
+    ul_array = np.array(utterance_length)
+
+    print("most length of context is %d" % cl_array.max())
+    print("most length of utterance is %d" % ul_array.max())
+
+    sub_abs = np.abs(cl_array - ul_array)
+    print("max,min,mean of abs(context_length -utterance_length) is %f,%f,%f" % (
+        np.max(sub_abs), np.min(sub_abs), np.mean(sub_abs)))
+
+    print("most common words :")
+    print(dist.most_common(10))
 
 
 if __name__ == '__main__':
     file_dir = "/data/cmd_corpus"
     # for fn in FILES_NAME:
     #     _rawToCsv(file_dir, fn, True)
-    # for i in utterance_generator(file_dir):
-    #     print(i)
+    take_some_analysis(file_dir)
