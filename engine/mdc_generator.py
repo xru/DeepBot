@@ -71,7 +71,7 @@ def utterance_generator(file_dir):
                 context = pattern.sub("", context)
                 utterance = pattern.sub("", utterance)
             except Exception as e:
-                print("Wrong preprocess...%s" % e)
+                # print("Wrong preprocess...%s" % e)
                 continue
 
             yield context, utterance
@@ -99,6 +99,8 @@ def take_some_analysis(file_dir):
 
     print("most length of context is %d" % cl_array.max())
     print("most length of utterance is %d" % ul_array.max())
+    print("mean length of context is %f" % cl_array.mean())
+    print("mean length of utterance is %f" % ul_array.mean())
 
     sub_abs = np.abs(cl_array - ul_array)
     print("max,min,mean of abs(context_length -utterance_length) is %f,%f,%f" % (
