@@ -24,8 +24,19 @@ from bot.config import *
 
 tokenzier = TweetTokenizer()
 
-UNK = "UNK"
-UNK_ID = 0
+_PAD = b"_PAD"
+_GO = b"_GO"
+_EOS = b"_EOS"
+_UNK = b"_UNK"
+
+_START_VOCAB = [_PAD, _GO, _EOS, _UNK]
+
+PAD_ID = 0
+GO_ID = 1
+EOS_ID = 2
+UNK_ID = 3
+
+_SYMBOLS_ID = [PAD_ID, GO_ID, EOS_ID, UNK_ID]
 
 
 def cmd_cleaned_generator(min_length=1, max_length=24):
@@ -62,11 +73,12 @@ def build_dictionary(generator, min_freq=5):
         print("Delete dictionary and rebuild")
         os.remove(dictionary_path)
 
-    dictionary = corpora.Dictionary([[UNK]])
+    dictionary = corpora.Dictionary([_START_VOCAB])
     dictionary.add_documents(c + u for c, u in generator)
 
     # 去除低频的ID
-    filter_ids = [tokenid for tokenid, docfreq in dictionary.dfs.items() if docfreq < min_freq and tokenid != UNK_ID]
+    filter_ids = [tokenid for tokenid, docfreq in dictionary.dfs.items() if
+                  docfreq < min_freq and tokenid not in _SYMBOLS_ID]
 
     dictionary.filter_tokens(filter_ids)
     dictionary.compactify()
@@ -80,7 +92,7 @@ def build_dictionary(generator, min_freq=5):
 def map_to_id(tokens, token2id, max_length):
     vec = [token2id[i] for i in tokens]
     pad_length = max_length - len(vec)
-    vec = np.pad(vec, (0, pad_length), mode="constant", constant_values=token2id[UNK]).astype(int)
+    vec = np.pad(vec, (0, pad_length), mode="constant", constant_values=token2id[_UNK]).astype(int)
 
     return vec
 

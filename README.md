@@ -20,6 +20,21 @@ most common words :
 [('.', 483355), (',', 241764), ('I', 205665), ('?', 163683), ('you', 160900), ('the', 125099), ('to', 114413), ('a', 95555), ("'s", 94990), ("n't", 80776)]
 ```
 
+## Deep Learning Model
+
+### End-To-End model
+!(Basic Seq2Seq model)[http://d3kbpzbmcynnmx.cloudfront.net/wp-content/uploads/2016/04/nct-seq2seq.png]
+
+### Buckets
+First, I choose to use buckets for process different input length efficient.
+
+There are some key point related:
+
+- buckets size set
+- batch buckets input generate, I will try to use Tensorflow reader
+- model process logic
+
+
 ## Reference
 
 - [A Neural Conversational Model](http://arxiv.org/pdf/1506.05869v3.pdf)
