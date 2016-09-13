@@ -23,17 +23,9 @@ most common words :
 ## Deep Learning Model
 
 ### End-To-End model
-!(Basic Seq2Seq model)[http://d3kbpzbmcynnmx.cloudfront.net/wp-content/uploads/2016/04/nct-seq2seq.png]
+![Basic Seq2Seq model](http://d3kbpzbmcynnmx.cloudfront.net/wp-content/uploads/2016/04/nct-seq2seq.png)
 
-### Buckets
-First, I choose to use buckets for process different input length efficient.
-
-There are some key point related:
-
-- buckets size set
-- batch buckets input generate, I will try to use Tensorflow reader
-- model process logic
-
+[DeepBot model and data detail](./bot/README.md)
 
 ## Reference
 

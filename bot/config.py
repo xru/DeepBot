@@ -30,11 +30,13 @@ tf.app.flags.DEFINE_boolean("use_fp16", False,
 
 FLAGS = tf.app.flags.FLAGS
 
-
+# experience set from tensorflow
+# that's means our max process padded input length is 40
+BUCKETS = [(5, 10), (10, 15), (20, 25), (40, 50)]
 
 # this path save all data
 DATA_PATH = '/data/deepbot'
 DICT_NAME = "dict_bot.pickle"
 MOVIE_CORPUS_DIR = "/data/cmd_corpus"
-TRAIN_FILE_NAME = "train.csv"
-TEST_FILE_NAME = 'test.csv'
+TRAIN_FILE_NAME = "train{}_{}.csv"
+TEST_FILE_NAME = 'test{}_{}.csv'

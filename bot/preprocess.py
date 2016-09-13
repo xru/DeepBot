@@ -24,29 +24,26 @@ from bot.config import *
 
 tokenzier = TweetTokenizer()
 
-_PAD = b"_PAD"
-_GO = b"_GO"
-_EOS = b"_EOS"
-_UNK = b"_UNK"
+_PAD = "_PAD"
+_GO = "_GO"
+_EOS = "_EOS"
+_UNK = "_UNK"
 
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 
-PAD_ID = 0
-GO_ID = 1
-EOS_ID = 2
-UNK_ID = 3
 
-_SYMBOLS_ID = [PAD_ID, GO_ID, EOS_ID, UNK_ID]
-
-
-def cmd_cleaned_generator(min_length=1, max_length=24):
-    pattern = re.compile(r"[^a-zA-Z1-9\.!?,' ]")
+def cmd_cleaned_generator():
+    pattern = re.compile(r"[^a-zA-Z1-9\.!?,' ]+")
+    sub_EOS = re.compile(r"[\.?!]+")
     for context, utterance in utterance_generator(MOVIE_CORPUS_DIR):
-        context = tokenzier.tokenize(pattern.sub("", context))
-        utterance = tokenzier.tokenize(pattern.sub("", utterance))
-        if len(context) < min_length or len(context) > max_length \
-                or len(utterance) < min_length or len(utterance) > max_length:
-            continue
+        context = pattern.sub("", context)
+        context = sub_EOS.sub(" " + _EOS, context)
+        context = tokenzier.tokenize(context)
+
+        utterance = pattern.sub("", utterance)
+        utterance = sub_EOS.sub(" " + _EOS, utterance)
+        utterance = tokenzier.tokenize(utterance)
+
         yield context, utterance
 
 
@@ -73,15 +70,16 @@ def build_dictionary(generator, min_freq=5):
         print("Delete dictionary and rebuild")
         os.remove(dictionary_path)
 
-    dictionary = corpora.Dictionary([_START_VOCAB])
-    dictionary.add_documents(c + u for c, u in generator)
+    dictionary = corpora.Dictionary(c + u for c, u in generator)
 
     # 去除低频的ID
     filter_ids = [tokenid for tokenid, docfreq in dictionary.dfs.items() if
-                  docfreq < min_freq and tokenid not in _SYMBOLS_ID]
+                  docfreq < min_freq]
 
     dictionary.filter_tokens(filter_ids)
     dictionary.compactify()
+
+    dictionary.add_documents([_START_VOCAB])
 
     pickle.dump(dictionary, open(dictionary_path, 'wb'))
     print("SVAE dictionary to %s" % (dictionary_path))
@@ -90,58 +88,78 @@ def build_dictionary(generator, min_freq=5):
 
 
 def map_to_id(tokens, token2id, max_length):
-    vec = [token2id[i] for i in tokens]
+    UNK_ID = token2id[_UNK]
+    PAD_ID = token2id[_PAD]
+    vec = [token2id.get(i, UNK_ID) for i in tokens]
     pad_length = max_length - len(vec)
-    vec = np.pad(vec, (0, pad_length), mode="constant", constant_values=token2id[_UNK]).astype(int)
-
+    vec = np.pad(vec, (0, pad_length), mode="constant", constant_values=PAD_ID).astype(int)
     return vec
 
 
-def build_train_test_set(generator, dictionary):
-    train_set = []
-    test_set = []
-    i = 0
-    UNK_ID = dictionary.token2id["UNK"]
-    token2id = defaultdict(lambda: UNK_ID)
-    token2id.update(dictionary.token2id)
-    for c, u in generator:
-        c_vec = map_to_id(c, token2id, MAX_LENGTH)
-        u_vec = map_to_id(u, token2id, MAX_LENGTH)
+def choose_buckets(encoder_length, decoder_length, buckets):
+    for x, y in buckets:
+        if encoder_length <= x and decoder_length <= y:
+            return x, y
+    return None
 
+
+def build_train_test_set(generator, dictionary, buckets):
+    train_sets = [[] for i in range(len(buckets))]
+    test_sets = [[] for i in range(len(buckets))]
+
+    token2id = dictionary.token2id
+
+    i = 0
+    for c, u in generator:
+        res = choose_buckets(len(c), len(u), buckets)
+
+        if not res:  # doesn't in buckets, abandon this example
+            continue
+
+        c_vec = map_to_id(c, token2id, res[0])
+        u_vec = map_to_id(u, token2id, res[1])
         concat_vec = np.append(c_vec, u_vec)
+
+        index = buckets.index(res)
         if i % 5 == 0:
-            test_set.append(concat_vec)
+            test_sets[index].append(concat_vec)
         else:
-            train_set.append(concat_vec)
+            train_sets[index].append(concat_vec)
         i += 1
 
-    train_set = np.array(train_set, int)
-    test_set = np.array(test_set, int)
+    for i in range(len(buckets)):
+        x, y = buckets[i]
+        train_data = np.array(train_sets[i])
+        test_data = np.array(test_sets[i])
+        print("Training Set with bucket of ({},{}) shape is {}".format(x, y, train_data.shape))
+        print("Test Set with bucket of ({},{}) shape is {}".format(x, y, test_data.shape))
 
-    print("Training Set shape {}".format(train_set.shape))
-    print("Test Set shap {}".format(test_set.shape))
-
-    train_path = os.path.join(DATA_PATH, TRAIN_FILE_NAME)
-    test_path = os.path.join(DATA_PATH, TEST_FILE_NAME)
-    np.savetxt(train_path, train_set, delimiter=",")
-    np.savetxt(test_path, test_set, delimiter=",")
-
-    print("Save training set to %s" % train_path)
-    print("Save test set to %s" % test_path)
+        train_path = os.path.join(DATA_PATH, TRAIN_FILE_NAME.format(x, y))
+        test_path = os.path.join(DATA_PATH, TEST_FILE_NAME.format(x, y))
+        np.savetxt(train_path, train_data, delimiter=",")
+        np.savetxt(test_path, test_data, delimiter=",")
+        print("Save training set to %s" % train_path)
+        print("Save test set to %s" % test_path)
+        print("\n")
 
 
 def main():
     # build dictionary
     dictionary_path = os.path.join(DATA_PATH, DICT_NAME)
-    generator = cmd_cleaned_generator(MIN_LENGTH, MAX_LENGTH)
+    generator = cmd_cleaned_generator()
 
     if os.path.exists(dictionary_path) and os.path.isfile(dictionary_path):
         dictionary = load_dictionary(dictionary_path)
     else:
         dictionary = build_dictionary(generator)
+        generator = cmd_cleaned_generator()
 
-    build_train_test_set(generator, dictionary)
+    print(_START_VOCAB)
+    v = [dictionary.token2id[i] for i in _START_VOCAB]
+    print(v)
+    print('\n')
     print("length of dictionary: %d" % len(dictionary.keys()))
+    build_train_test_set(generator, dictionary, buckets=BUCKETS)
 
 
 if __name__ == '__main__':
