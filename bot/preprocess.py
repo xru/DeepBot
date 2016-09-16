@@ -129,15 +129,15 @@ def build_train_test_set(generator, dictionary, buckets):
 
     for i in range(len(buckets)):
         x, y = buckets[i]
-        train_data = np.array(train_sets[i])
-        test_data = np.array(test_sets[i])
+        train_data = np.array(train_sets[i], dtype=np.int32)
+        test_data = np.array(test_sets[i], dtype=np.int32)
         print("Training Set with bucket of ({},{}) shape is {}".format(x, y, train_data.shape))
         print("Test Set with bucket of ({},{}) shape is {}".format(x, y, test_data.shape))
 
         train_path = os.path.join(DATA_PATH, TRAIN_FILE_NAME.format(x, y))
         test_path = os.path.join(DATA_PATH, TEST_FILE_NAME.format(x, y))
-        np.savetxt(train_path, train_data, delimiter=",")
-        np.savetxt(test_path, test_data, delimiter=",")
+        np.savetxt(train_path, train_data, delimiter=",", fmt='%i')
+        np.savetxt(test_path, test_data, delimiter=",", fmt='%i')
         print("Save training set to %s" % train_path)
         print("Save test set to %s" % test_path)
         print("\n")
