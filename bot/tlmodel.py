@@ -55,7 +55,7 @@ is_npz = False  # if true save by npz file, otherwise ckpt file
 # Data Path
 RAW_DATA_PATH = '/data/cmd_corpus'
 data_dir = '/data/deepbot'
-train_dir = '/data/deepbot'
+train_dir = '/data/deepbot/model'
 enc_vocab_size = 30000
 dec_vocab_size = 30000
 
@@ -204,7 +204,7 @@ def main_train():
         # decode
         vocab_dec, rev_vocab_dec = tl.nlp.initialize_vocabulary(dec_vocab_path)
         context = tl.nlp.word_ids_to_words(train_set[0][0][1], rev_vocab_dec)
-        word_ids = tl.nlp.words_to_word_ids(context,vocab_dec)
+        word_ids = tl.nlp.words_to_word_ids(context, vocab_dec)
         print("dec word_ids:", word_ids)
         print("dec context:", context)
 
@@ -218,6 +218,156 @@ def main_train():
     train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                            for i in range(len(train_bucket_sizes))]
     print('train_buckets_scale:', train_buckets_scale)
+
+    '''
+    Step 5 : Create model
+    '''
+    print()
+    print("Create Embedding Attention Seq2Seq Model")
+    with tf.variable_scope("model", resue=None):
+        model = tl.layers.EmbeddingAttentionSeq2seqWrapper(
+            enc_vocab_size,
+            dec_vocab_size,
+            BUCKETS,
+            size,
+            num_layers,
+            max_gradient_norm,
+            batch_size,
+            learning_rate,
+            learning_rate_decay_factor,
+            forward_only=False)
+
+    sess.run(tf.initialize_all_variables())
+    tl.layers.print_all_variables()
+
+    if resume:
+        print("Load existing model" + "!" * 10)
+        if is_npz:
+            load_params = tl.files.load_npz(name=model_file_name + '.npz')
+            tl.files.assign_params(sess, load_params, model)
+        else:
+            saver = tf.train.Saver()
+            saver.restore(sess, model_file_name + '.ckpt')
+
+    '''
+    Step 6 : Training
+    '''
+    print()
+    step_time, loss = 0.0, 0.0
+    current_step = 0
+    previous_losses = []
+    if __name__ == '__main__':
+        while True:
+            random_number_01 = np.random.random_sample()
+            bucket_id = min([i for i in range(len(train_buckets_scale))
+                             if train_buckets_scale[i] > random_number_01])
+            # Get a batch and make a step
+            start_tiem = time.time()
+            encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                train_set, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
+
+            _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                         target_weights, bucket_id, False)
+            step_time += (time.time() - start_tiem) / steps_per_checkpoint
+            loss += step_loss / steps_per_checkpoint
+            current_step += 1
+
+            # Once in a while, we save checkpoint, print statistics and run evals
+            if current_step % steps_per_checkpoint == 0:
+                # print statistics for the previous epoch
+                perplexity = math.exp(loss) if loss < 300 else float('inf')
+                print("global step %d learning rate %.4f step time %.2f "
+                      "perplexity %.2f" % model.global_step.eval(),
+                      model.learning_rate.eval(), step_time, perplexity)
+
+                if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                    sess.run(model.learning_rate_decay_op)
+                previous_losses.append(loss)
+
+                # save model
+                if is_npz:
+                    tl.files.save_npz(model.all_params,
+                                      name=model_file_name + '.npz')
+                else:
+                    print('Model is save to: %s' % (model_file_name + '.ckpt'))
+                    checkpoint_path = os.path.join(train_dir, model_file_name + '.ckpt')
+                    model.saver.save(sess, checkpoint_path, global_step=model.global_step)
+
+                step_time, loss = 0.0, 0.0
+                # Run evals on dev set
+                for bucket_id in range(len(BUCKETS)):
+                    if len(dev_set[bucket_id]) == 0:
+                        print(" eval: empty bucket %d" % (bucket_id))
+                        continue
+                    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+                        dev_set, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
+                    _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
+                                                 target_weights, bucket_id, True)
+                    eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+                    print(" eval:bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
+                sys.stdout.flush()
+
+
+def main_decode():
+    '''
+    Create model and load parmaters.
+    '''
+    with tf.variable_scope('model', reuse=None):
+        model_eval = tl.layers.EmbeddingAttentionSeq2seqWrapper(
+            source_vocab_size=enc_vocab_size,
+            target_vocab_size=dec_vocab_size,
+            buckets=BUCKETS,
+            size=size,
+            num_layers=num_layers,
+            max_gradient_norm=max_gradient_norm,
+            batch_size=1,
+            learning_rate=learning_rate,
+            learning_rate_decay_factor=learning_rate_decay_factor,
+            forward_only=True)
+    sess.run(tf.initialize_all_variables())
+
+    if is_npz:
+        print("Load parameters from npz")
+        load_parms = tl.files.load_npz(name=model_file_name + '.npz')
+        tl.files.assign_params(sess, load_parms, model_eval)
+    else:
+        print("Load parameters from ckpt")
+        ckpt = tf.train.get_checkpoint_state(train_dir)
+        if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+            print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+            model_eval.saver.restore(sess, ckpt.model_checkpoint_path)
+        else:
+            raise Exception("no %s exit" % ckpt.model_checkpoint_path)
+
+    tl.layers.print_all_variables()
+
+    # Load vocabularies
+    enc_vocab_path = os.path.join(data_dir, 'vocab%d.enc' % enc_vocab_size)
+    dec_vocab_path = os.path.join(data_dir, 'vocab%d.dec' % dec_vocab_size)
+    enc_vocab, _ = tl.nlp.initialize_vocabulary(enc_vocab_path)
+    _, rev_dec_vocab = tl.nlp.initialize_vocabulary(dec_vocab_path)
+
+    # Decode from standard input
+    sys.stdout.write("> ")
+    sys.stdout.flush()
+    sentence = sys.stdin.readline()
+
+    while sentence:
+        token_ids = tl.nlp.sentence_to_token_ids(tf.compat.as_bytes(sentence), enc_vocab)
+        bucket_id = min([b for b in range(len(BUCKETS)) if BUCKETS[b][0] > len(token_ids)])
+        # Get a 1-element batch to feed the sentence to the model.
+        encoder_inputs, decoder_inputs, target_weights = model_eval.get_batch(
+            {bucket_id: [(token_ids, [])]}, bucket_id, PAD_ID, GO_ID, EOS_ID, UNK_ID)
+        _, _, output_logits = model_eval.step(sess, encoder_inputs, decoder_inputs,
+                                              target_weights, bucket_id, True)
+        outputs = [int(np.argmax(logit, axis=1)) for logit in output_logits]
+        if EOS_ID in outputs:
+            outputs = outputs[:outputs.index(EOS_ID)]
+            # Print out French sentence corresponding to outputs.
+            print(" ".join([tf.compat.as_str(rev_dec_vocab[output]) for output in outputs]))
+            print("> ", end="")
+            sys.stdout.flush()
+            sentence = sys.stdin.readline()
 
 
 if __name__ == '__main__':
