@@ -228,3 +228,4 @@ if __name__ == '__main__':
             FLAGS.batch_size,
             FLAGS.learning_rate,
             FLAGS.learning_rate_decay_factor)
+

@@ -114,4 +114,8 @@ if __name__ == '__main__':
     file_dir = "/data/cmd_corpus"
     # for fn in FILES_NAME:
     #     _rawToCsv(file_dir, fn, True)
-    take_some_analysis(file_dir)
+    # take_some_analysis(file_dir)
+    for i,j in utterance_generator(file_dir):
+        print(i)
+        print(j)
+        print('\n')

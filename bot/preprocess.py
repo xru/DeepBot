@@ -31,6 +31,10 @@ _UNK = "_UNK"
 
 _START_VOCAB = [_PAD, _GO, _EOS, _UNK]
 
+PAD_ID = 0
+GO_ID = 1
+EOS_ID = 2
+UNK_ID = 3
 
 def cmd_cleaned_generator():
     pattern = re.compile(r"[^a-zA-Z1-9\.!?,' ]+")
@@ -141,6 +145,34 @@ def build_train_test_set(generator, dictionary, buckets):
         print("Save training set to %s" % train_path)
         print("Save test set to %s" % test_path)
         print("\n")
+
+
+def prepare_custom_data(working_directory, train_enc, train_dec,
+                        test_enc, test_dec, enc_vocabulary_size,
+                        dec_vocabulary_size, tokenizer=None):
+    '''
+    Converts raw sentences into token id's and returns the
+    path to vocabulary and tokenzied sentences
+
+    :param working_directory: directory where vocabulary files will be stored
+    :param train_enc: encoder input for training (X_train)
+    :param train_dec: decoder input for training (Y_train)
+    :param test_enc: encoder input for evaluation (X_test)
+    :param test_dec: decoder input for evaluation (Y_test)
+    :param enc_vocabulary_size: size of vocabulary on encoder size
+    :param dec_vocabulary_size: size of vocabulary on decoder size
+    :param tokenizer: None - uses basic_tokenizer function
+
+    :return:
+    '''
+    enc_vocab_path = os.path.join(working_directory,
+                                  "vocab%d.enc" % enc_vocabulary_size)
+    dec_vocab_path = os.path.join(working_directory,
+                                  "vocab%d.dec" % dec_vocabulary_size)
+    create_vocabluary(enc_vocab_path,train_enc,
+                      enc_vocabulary_size,tokenizer)
+    create_vocabluary(dec_vocab_path,train_dec,
+                      dec_vocabulary_size,tokenizer)
 
 
 def main():
